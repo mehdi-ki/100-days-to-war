@@ -9,7 +9,7 @@ Der aktuelle Prototyp ist ein 10-Tage-Spielstand. Der Java-Port bildet zuerst de
 - Java 25 LTS als Zielplattform
 - libGDX 1.14.2
 - libGDX LWJGL3-Backend für Linux/Desktop
-- Gradle 9.8 als Build-System
+- Gradle 9.8.0 als Build-System
 - Kernsimulation unabhängig vom Rendering
 - Linux-AppImage mit gebündelter Laufzeit als Release-Ziel
 
@@ -17,7 +17,7 @@ Die ausführliche Entscheidung steht in [`docs/TECH_STACK.md`](docs/TECH_STACK.m
 
 ## Lokal starten
 
-Voraussetzung für die Entwicklung ist ein JDK 25 und Gradle 9.8 oder neuer:
+Voraussetzung für die Entwicklung ist ein JDK 25 und Gradle 9.8.0 oder neuer:
 
 ```bash
 gradle :lwjgl3:run
@@ -45,4 +45,4 @@ Erwarteter Dateiname:
 
 ## Prototyp
 
-Der ursprüngliche Referenzstand liegt unter [`prototype/100-days-to-war.html`](prototype/100-days-to-war.html). Er bleibt unverändert, damit Balancing und Spielregeln nachvollziehbar bleiben.
+Der ursprüngliche HTML-Prototyp wurde vor der Portierung geprüft und dient lokal als Referenz für Balancing und Spielregeln. Die öffentliche Repository-Version enthält den portierten Java-Spielkern; die private Quelldatei des Prototyps wird nicht automatisch veröffentlicht.
