@@ -9,7 +9,7 @@ Für **100 Days to War** wird **Java + libGDX + Gradle** eingesetzt. Das Desktop
 | Hauptsprache | Java 25 LTS |
 | Framework | libGDX 1.14.2 |
 | Desktop-Backend | libGDX LWJGL3 |
-| Build-System | Gradle 9.8 |
+| Build-System | Gradle 9.8.0 |
 | Zielplattform | Linux Desktop x86_64 |
 | Releaseformat | AppImage mit gebündelter Laufzeit |
 
@@ -68,7 +68,7 @@ Release:
 - `com.badlogicgames.gdx:gdx-backend-lwjgl3:1.14.2`
 - `com.badlogicgames.gdx:gdx-platform:1.14.2:natives-desktop`
 - JUnit Jupiter 5.12.2 für Simulationstests
-- Gradle 9.8 für Build und Packaging
+- Gradle 9.8.0 für Build und Packaging
 - `jpackage` aus dem JDK und `appimagetool` für das Linux-AppImage
 
 ## Portierungsumfang des Prototyps
