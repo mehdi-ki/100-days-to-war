@@ -55,5 +55,7 @@ command -v "${APPIMAGETOOL}" >/dev/null 2>&1 || {
   exit 1
 }
 
-ARCH=x86_64 "${APPIMAGETOOL}" "${APP_DIR}" "${OUTPUT}"
+# GitHub-hosted Linux runners do not guarantee libfuse2. appimagetool can
+# execute from its own AppImage without mounting FUSE in that environment.
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "${APPIMAGETOOL}" "${APP_DIR}" "${OUTPUT}"
 echo "AppImage erstellt: ${OUTPUT}"

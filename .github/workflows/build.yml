@@ -26,7 +26,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.8.0'
+          gradle-version: '9.8'
 
       - name: Test and install distribution
         run: gradle test :lwjgl3:installDist --no-daemon
