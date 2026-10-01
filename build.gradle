@@ -1,0 +1,34 @@
+plugins {
+    id 'base'
+}
+
+ext {
+    appName = '100-Days-to-War'
+    gdxVersion = '1.14.2'
+    gameVersion = '0.1.0'
+}
+
+allprojects {
+    group = 'com.mehdi.daystowar'
+    version = gameVersion
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+        withSourcesJar()
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.compilerArgs.addAll(['-Xlint:all', '-Werror'])
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+}

@@ -1,0 +1,12 @@
+.gradle/
+build/
+*/build/
+out/
+.idea/
+*.iml
+*.log
+.DS_Store
+
+# Local AppImage staging
+AppDir/
+release/
