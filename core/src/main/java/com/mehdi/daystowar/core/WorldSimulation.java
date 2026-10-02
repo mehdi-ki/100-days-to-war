@@ -78,6 +78,37 @@ public final class WorldSimulation {
         return ActionResult.ok(type.displayName() + " wurde in Auftrag gegeben.");
     }
 
+    public ActionResult upgradeBuilding(BuildingType type, RegionId region) {
+        if (state.finished()) {
+            return ActionResult.rejected("Der Kriegstest ist bereits abgeschlossen.");
+        }
+        int currentLevel = state.buildingLevel(region, type);
+        if (currentLevel <= 0) {
+            return ActionResult.rejected("Dieses Gebäude ist in der Region noch nicht vorhanden.");
+        }
+        if (currentLevel >= type.maxLevel()) {
+            return ActionResult.rejected("Dieses Gebäude ist bereits auf der höchsten Stufe.");
+        }
+        if (currentLevel >= 2 && state.countBuilding(BuildingType.CIVIL) < 1) {
+            return ActionResult.rejected("Ab Stufe 3 wird mindestens eine zivile Fabrik benötigt.");
+        }
+
+        int cashCost = type.upgradeCashCost(currentLevel);
+        int steelCost = type.upgradeSteelCost(currentLevel);
+        if (!canAfford(cashCost, steelCost, 0)) {
+            return ActionResult.rejected("Für dieses Upgrade fehlen Geld oder Stahl.");
+        }
+
+        state.addResource(ResourceType.CASH, -cashCost);
+        state.addResource(ResourceType.STEEL, -steelCost);
+        state.upgradeBuilding(region, type);
+        int targetLevel = currentLevel + 1;
+        state.addHistory(type.displayName() + " in " + region.displayName()
+                + " auf Stufe " + targetLevel + " verbessert.");
+        return ActionResult.ok(type.displayName() + " ist jetzt Stufe " + targetLevel + ". "
+                + type.effectAtLevel(targetLevel));
+    }
+
     public ActionResult train(UnitType type) {
         if (state.finished()) {
             return ActionResult.rejected("Der Kriegstest ist bereits abgeschlossen.");
@@ -216,7 +247,7 @@ public final class WorldSimulation {
         double logistics = state.armyCount(UnitType.LOGISTICS) > 0 ? 1.2 : 1;
         double ownSupply = (.58 + .42 * foodSupply) * logistics;
         double fuelFactor = 1 - (mechanizedCount > 0 ? Math.max(0, 1 - fuelSupply) * .55 : 0);
-        double fortFactor = 1 + Math.min(.45, state.countBuilding(BuildingType.FORT) * .15);
+        double fortFactor = 1 + Math.min(.45, state.buildingPower(BuildingType.FORT) * .15);
         double moraleFactor = .68 + state.morale() / 250;
         double stabilityFactor = .82 + state.stability() / 550;
         double experienceFactor = experienceFactor();
@@ -236,7 +267,7 @@ public final class WorldSimulation {
         int quality = enemyEstimateQuality();
 
         List<String> reasons = new ArrayList<>();
-        if (state.countBuilding(BuildingType.FORT) > 0) {
+        if (state.buildingPower(BuildingType.FORT) > 0) {
             reasons.add("Grenzbefestigungen steigerten die eigene Verteidigung um "
                     + Math.round((fortFactor - 1) * 100) + " %.");
         } else {
@@ -259,7 +290,7 @@ public final class WorldSimulation {
         } else {
             reasons.add("Niedrige Armeemoral senkte die Kampfkraft.");
         }
-        if (state.intelligence() > 0 || state.countBuilding(BuildingType.INTEL) > 0) {
+        if (state.intelligence() > 0 || state.buildingPower(BuildingType.INTEL) > 0) {
             reasons.add("Aufklärung verringerte das Risiko, von der gegnerischen Stärke überrascht zu werden.");
         } else {
             reasons.add("Unzureichende Aufklärung ließ die Führung mit unsicheren Gegnerdaten planen.");
@@ -280,7 +311,7 @@ public final class WorldSimulation {
                 new WarReport.Factor("Treibstoffbereitschaft", Math.round(fuelSupply * 100) + " %", fuelSupply > .65),
                 new WarReport.Factor("Armeemoral", Math.round(state.morale()) + " %", state.morale() >= 70),
                 new WarReport.Factor("Festungsbonus", "+" + Math.round((fortFactor - 1) * 100) + " %",
-                        state.countBuilding(BuildingType.FORT) > 0),
+                        state.buildingPower(BuildingType.FORT) > 0),
                 new WarReport.Factor("Erfahrung", Math.round(experienceFactor * 100) + " %", experienceFactor >= 1),
                 new WarReport.Factor("Geheimdienst", quality + " % Genauigkeit", quality > 55)
         );
@@ -292,7 +323,7 @@ public final class WorldSimulation {
     }
 
     public int enemyEstimateQuality() {
-        int quality = 28 + state.intelligence() * 18 + state.countBuilding(BuildingType.INTEL) * 12;
+        int quality = 28 + state.intelligence() * 18 + state.buildingPower(BuildingType.INTEL) * 12;
         return Math.min(95, quality);
     }
 
@@ -442,18 +473,18 @@ public final class WorldSimulation {
         double stabilityFactor = state.stability() < 35 ? .78 : 1;
         double modifier = state.industryModifierDays() > 0 ? state.industryModifier() : 1;
         double industryFactor = industry * stabilityFactor * modifier;
-        int civil = state.countBuilding(BuildingType.CIVIL);
-        int military = state.countBuilding(BuildingType.MILITARY);
-        int refinery = state.countBuilding(BuildingType.REFINERY);
-        int intel = state.countBuilding(BuildingType.INTEL);
+        int civil = state.buildingPower(BuildingType.CIVIL);
+        int military = state.buildingPower(BuildingType.MILITARY);
+        int refinery = state.buildingPower(BuildingType.REFINERY);
+        int intel = state.buildingPower(BuildingType.INTEL);
         int income = state.tax().income() + civil * 600;
         int expense = 1_900 + military * 250 + refinery * 180 + intel * 120
                 + (state.policy() == Policy.GENERAL ? 500 : state.policy() == Policy.LIMITED ? 200 : 0);
         flows.put(ResourceType.CASH, income - expense);
-        flows.put(ResourceType.FOOD, (int) Math.round(state.countBuilding(BuildingType.FARM) * 30 * industryFactor
+        flows.put(ResourceType.FOOD, (int) Math.round(state.buildingPower(BuildingType.FARM) * 30 * industryFactor
                 - foodUse()));
-        flows.put(ResourceType.STEEL, (int) Math.round(state.countBuilding(BuildingType.STEELWORK) * 15 * industryFactor));
-        flows.put(ResourceType.FUEL, (int) Math.round(state.countBuilding(BuildingType.REFINERY) * 12 * industryFactor
+        flows.put(ResourceType.STEEL, (int) Math.round(state.buildingPower(BuildingType.STEELWORK) * 15 * industryFactor));
+        flows.put(ResourceType.FUEL, (int) Math.round(state.buildingPower(BuildingType.REFINERY) * 12 * industryFactor
                 - fuelUse()));
         flows.put(ResourceType.MANPOWER, state.policy().manpowerPerDay());
         return flows;
@@ -521,7 +552,7 @@ public final class WorldSimulation {
     }
 
     private void completeProduction() {
-        int factories = state.countBuilding(BuildingType.MILITARY);
+        int factories = state.buildingPower(BuildingType.MILITARY);
         long activeIndustrialOrders = state.production().stream()
                 .filter(order -> order.type() != UnitType.INFANTRY)
                 .count();

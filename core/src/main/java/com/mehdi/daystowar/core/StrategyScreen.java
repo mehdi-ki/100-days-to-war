@@ -3,10 +3,12 @@ package com.mehdi.daystowar.core;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.Rectangle;
@@ -19,8 +21,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The readable Veyra command screen. The simulation stays in WorldSimulation;
- * this class only renders and routes player input to it.
+ * Veyra command screen. The map is an interactive atlas: map content is
+ * rendered in world coordinates while the surrounding command UI stays fixed.
+ * Simulation rules remain in {@link WorldSimulation}.
  */
 public final class StrategyScreen extends InputAdapter implements Screen {
     private static final float WORLD_WIDTH = 1_440;
@@ -31,42 +34,80 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private static final float MAP_Y = 84;
     private static final float MAP_WIDTH = 700;
     private static final float MAP_HEIGHT = 732;
+    private static final float MAP_AREA_X = MAP_X + 24;
+    private static final float MAP_AREA_Y = MAP_Y + 136;
+    private static final float MAP_AREA_WIDTH = MAP_WIDTH - 48;
+    private static final float MAP_AREA_HEIGHT = MAP_HEIGHT - 186;
     private static final float MAP_LEFT = 382;
     private static final float MAP_BOTTOM = 270;
-    private static final float MAP_TILE_WIDTH = 62;
-    private static final float MAP_TILE_HEIGHT = 54;
+    private static final float MAP_TILE_WIDTH = 64;
+    private static final float MAP_TILE_HEIGHT = 56;
     private static final float MAP_STEP_X = 66;
     private static final float MAP_STEP_Y = 58;
+    private static final float MAP_CENTER_X = MAP_AREA_X + MAP_AREA_WIDTH / 2f;
+    private static final float MAP_CENTER_Y = MAP_AREA_Y + MAP_AREA_HEIGHT / 2f;
+    private static final float MAP_CONTENT_LEFT = MAP_LEFT - 24;
+    private static final float MAP_CONTENT_RIGHT = MAP_LEFT + 8 * MAP_STEP_X + MAP_TILE_WIDTH + 24;
+    private static final float MAP_CONTENT_BOTTOM = MAP_BOTTOM - 24;
+    private static final float MAP_CONTENT_TOP = MAP_BOTTOM + 7 * MAP_STEP_Y + MAP_TILE_HEIGHT + 24;
+    private static final float FONT_BASE_SIZE = 24f;
 
     private static final Color BACKGROUND = new Color(0.025f, 0.045f, 0.07f, 1f);
     private static final Color PANEL = new Color(0.055f, 0.085f, 0.12f, 1f);
     private static final Color PANEL_ALT = new Color(0.075f, 0.11f, 0.15f, 1f);
     private static final Color LINE = new Color(0.17f, 0.27f, 0.34f, 1f);
-    private static final Color SEA = new Color(0.035f, 0.13f, 0.18f, 1f);
-    private static final Color RIVER = new Color(0.22f, 0.67f, 0.82f, 1f);
-    private static final Color RAIL = new Color(0.78f, 0.68f, 0.37f, 1f);
-    private static final Color TEXT = new Color(0.88f, 0.93f, 0.96f, 1f);
-    private static final Color MUTED = new Color(0.55f, 0.66f, 0.72f, 1f);
-    private static final Color ACCENT = new Color(0.63f, 0.9f, 0.96f, 1f);
+    private static final Color SEA = new Color(0.025f, 0.18f, 0.26f, 1f);
+    private static final Color RIVER = new Color(0.25f, 0.78f, 0.92f, 1f);
+    private static final Color RAIL = new Color(0.86f, 0.72f, 0.35f, 1f);
+    private static final Color TEXT = new Color(0.9f, 0.94f, 0.96f, 1f);
+    private static final Color MUTED = new Color(0.58f, 0.68f, 0.74f, 1f);
+    private static final Color ACCENT = new Color(0.72f, 0.91f, 0.56f, 1f);
     private static final Color WARNING = new Color(0.98f, 0.62f, 0.33f, 1f);
-    private static final Color BUILDING = new Color(0.89f, 0.76f, 0.46f, 1f);
-    private static final Color BUILDING_DARK = new Color(0.43f, 0.29f, 0.2f, 1f);
+    private static final Color BUILDING = new Color(0.94f, 0.78f, 0.45f, 1f);
+    private static final Color BUILDING_DARK = new Color(0.36f, 0.22f, 0.16f, 1f);
+    private static final Color POPUP = new Color(0.055f, 0.075f, 0.1f, 1f);
 
     private final WorldSimulation simulation;
     private final Viewport viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT);
     private final ShapeRenderer shapes = new ShapeRenderer();
     private final SpriteBatch batch = new SpriteBatch();
-    private final BitmapFont font = new BitmapFont();
     private final List<Button> buttons = new ArrayList<>();
+    private final List<BuildingHitBox> buildingHitBoxes = new ArrayList<>();
     private final List<MapRegionView> mapRegions = createMapRegions();
+    private final FreeTypeFontGenerator fontGenerator;
+    private final BitmapFont font;
 
     private WorldRegion selectedRegion = WorldRegion.VALERIA_CAPITAL;
+    private OperationsTab operationsTab = OperationsTab.BUILD;
+    private BuildingHitBox selectedBuilding;
+    private boolean buildingPopupOpen;
     private String notice = "";
     private float noticeTime;
     private float animationTime;
+    private float mapZoom = 1f;
+    private float mapPanX;
+    private float mapPanY;
+    private boolean panningMap;
+    private boolean mapDragMoved;
+    private float lastDragX;
+    private float lastDragY;
 
     public StrategyScreen(WorldSimulation simulation) {
         this.simulation = simulation;
+        FileHandle fontFile = Gdx.files.internal("fonts/DejaVuSans.ttf");
+        if (fontFile.exists()) {
+            fontGenerator = new FreeTypeFontGenerator(fontFile);
+            FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
+            parameter.size = 24;
+            parameter.characters = FreeTypeFontGenerator.DEFAULT_CHARS + "ÄÖÜäöüß…·↔→–—";
+            parameter.minFilter = com.badlogic.gdx.graphics.Texture.TextureFilter.Linear;
+            parameter.magFilter = com.badlogic.gdx.graphics.Texture.TextureFilter.Linear;
+            font = fontGenerator.generateFont(parameter);
+            font.setUseIntegerPositions(false);
+        } else {
+            fontGenerator = null;
+            font = new BitmapFont();
+        }
     }
 
     @Override
@@ -82,12 +123,16 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         Gdx.gl.glClearColor(BACKGROUND.r, BACKGROUND.g, BACKGROUND.b, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         buttons.clear();
+        buildingHitBoxes.clear();
 
         shapes.setProjectionMatrix(viewport.getCamera().combined);
         drawPanels();
         drawMapVisuals();
         drawButtons();
         drawText();
+        if (buildingPopupOpen) {
+            drawBuildingPopup();
+        }
     }
 
     private void drawPanels() {
@@ -98,7 +143,6 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         panel(24, 84, 300, 732, PANEL);
         panel(MAP_X, MAP_Y, MAP_WIDTH, MAP_HEIGHT, PANEL);
         panel(1_056, 84, 360, 732, PANEL);
-
         for (int index = 0; index < 5; index++) {
             float x = 760 + index * 94;
             shapes.setColor(PANEL);
@@ -118,12 +162,16 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private void drawMapVisuals() {
         shapes.begin(ShapeType.Filled);
         shapes.setColor(SEA);
-        shapes.rect(MAP_X + 24, MAP_Y + 136, MAP_WIDTH - 48, MAP_HEIGHT - 186);
+        shapes.rect(MAP_AREA_X, MAP_AREA_Y, MAP_AREA_WIDTH, MAP_AREA_HEIGHT);
+        shapes.end();
 
+        beginMapClip();
+        shapes.begin(ShapeType.Filled);
+        drawSeaTexture();
         for (MapRegionView view : mapRegions) {
             Color country = nationColor(view.region().nation());
-            shapes.setColor(country.r, country.g, country.b, 0.9f);
-            drawFilledRegion(view.vertices());
+            shapes.setColor(country.r, country.g, country.b, 0.93f);
+            drawFilledRegion(transformedVertices(view));
             drawTerrainDecoration(view);
             drawAnimatedBuildings(view);
         }
@@ -131,93 +179,121 @@ public final class StrategyScreen extends InputAdapter implements Screen {
 
         shapes.begin(ShapeType.Line);
         shapes.setColor(LINE);
-        shapes.rect(MAP_X + 24, MAP_Y + 136, MAP_WIDTH - 48, MAP_HEIGHT - 186);
         for (MapRegionView view : mapRegions) {
             shapes.setColor(view.region() == selectedRegion ? ACCENT : LINE);
-            shapes.polygon(view.vertices());
+            shapes.polygon(transformedVertices(view));
         }
         drawRiverAndRailways();
-        shapes.setColor(ACCENT);
+        shapes.setColor(WARNING);
         shapes.line(centreX(WorldRegion.VALERIA_EASTMARCH), centreY(WorldRegion.VALERIA_EASTMARCH),
                 centreX(WorldRegion.DRAVIK_VARKESH), centreY(WorldRegion.DRAVIK_VARKESH));
+        drawFrontMarkers();
         shapes.end();
 
         shapes.begin(ShapeType.Filled);
         drawMovingMarker(WorldRegion.ASTER_RIVERGATE, WorldRegion.VALERIA_CAPITAL, RAIL, 0.1f);
         drawMovingMarker(WorldRegion.VALERIA_GREEN_BASIN, WorldRegion.ELDORIA_RIVERLANDS, RIVER, 0.62f);
         shapes.end();
+        endMapClip();
+    }
+
+    private void drawSeaTexture() {
+        shapes.setColor(SEA);
+        shapes.rect(MAP_AREA_X - 60, MAP_AREA_Y - 60, MAP_AREA_WIDTH + 120, MAP_AREA_HEIGHT + 120);
+        shapes.setColor(0.06f, 0.34f, 0.43f, 0.32f);
+        for (int index = 0; index < 18; index++) {
+            float x = MAP_AREA_X - 40 + ((index * 83) % 730);
+            float y = MAP_AREA_Y - 20 + ((index * 47) % 600);
+            shapes.circle(x, y, 1.5f + (index % 3), 8);
+        }
     }
 
     private void drawTerrainDecoration(MapRegionView view) {
-        float x = view.bounds().x + 10;
-        float y = view.bounds().y + view.bounds().height - 17;
+        float scale = mapZoom;
+        float x = mapPointX(view.bounds().x + 9);
+        float y = mapPointY(view.bounds().y + view.bounds().height - 18);
         switch (view.region().terrain()) {
             case MOUNTAINS -> {
-                shapes.setColor(0.82f, 0.88f, 0.9f, 0.75f);
-                shapes.triangle(x, y, x + 9, y + 13, x + 18, y);
-                shapes.triangle(x + 11, y, x + 20, y + 10, x + 29, y);
+                shapes.setColor(0.86f, 0.91f, 0.94f, 0.75f);
+                triangle(x, y, x + 9 * scale, y + 14 * scale, x + 18 * scale, y);
+                triangle(x + 11 * scale, y, x + 20 * scale, y + 11 * scale, x + 30 * scale, y);
             }
             case FOREST -> {
-                shapes.setColor(0.19f, 0.48f, 0.38f, 0.85f);
-                shapes.circle(x + 8, y + 5, 6, 10);
-                shapes.circle(x + 18, y + 6, 7, 10);
-                shapes.circle(x + 28, y + 4, 5, 10);
+                shapes.setColor(0.12f, 0.34f, 0.25f, 0.92f);
+                shapes.circle(x + 8 * scale, y + 5 * scale, 6 * scale, 10);
+                shapes.circle(x + 18 * scale, y + 6 * scale, 7 * scale, 10);
+                shapes.circle(x + 29 * scale, y + 4 * scale, 5 * scale, 10);
             }
             case DESERT -> {
-                shapes.setColor(0.93f, 0.73f, 0.38f, 0.72f);
-                shapes.rect(x, y + 4, 22, 2);
-                shapes.rect(x + 8, y, 18, 2);
+                shapes.setColor(0.95f, 0.72f, 0.36f, 0.72f);
+                shapes.rect(x, y + 4 * scale, 22 * scale, 2 * scale);
+                shapes.rect(x + 8 * scale, y, 18 * scale, 2 * scale);
             }
             case COAST -> {
-                shapes.setColor(0.32f, 0.75f, 0.85f, 0.85f);
-                shapes.circle(x + 8, y + 4, 4, 10);
-                shapes.circle(x + 19, y + 5, 3, 10);
+                shapes.setColor(0.4f, 0.82f, 0.87f, 0.85f);
+                shapes.circle(x + 8 * scale, y + 4 * scale, 4 * scale, 10);
+                shapes.circle(x + 20 * scale, y + 5 * scale, 3 * scale, 10);
             }
             case PASS -> {
-                shapes.setColor(0.72f, 0.72f, 0.65f, 0.8f);
-                shapes.triangle(x, y, x + 11, y + 14, x + 22, y);
+                shapes.setColor(0.75f, 0.75f, 0.67f, 0.82f);
+                triangle(x, y, x + 11 * scale, y + 14 * scale, x + 22 * scale, y);
             }
             case PLAINS -> {
-                shapes.setColor(0.76f, 0.82f, 0.44f, 0.72f);
-                shapes.rect(x + 2, y + 4, 22, 2);
+                shapes.setColor(0.84f, 0.86f, 0.48f, 0.8f);
+                shapes.rect(x + 2 * scale, y + 4 * scale, 22 * scale, 2 * scale);
             }
         }
     }
 
     private void drawAnimatedBuildings(MapRegionView view) {
+        List<BuildingType> actualBuildings = simulation.state().buildings(view.region().operationalRegion());
         int buildingCount = view.region().nation() == PLAYER_NATION
-                ? Math.max(1, Math.min(3, simulation.state().buildings(view.region().operationalRegion()).size()))
-                : 1;
-        float baseX = view.bounds().x + view.bounds().width - 27;
-        float baseY = view.bounds().y + 10;
-        float bob = (float) Math.sin(animationTime * 2.2f + view.region().ordinal()) * 1.4f;
+                ? Math.max(1, Math.min(3, actualBuildings.size())) : 1;
+        float scale = mapZoom;
+        float baseX = mapPointX(view.bounds().x + view.bounds().width - 27);
+        float baseY = mapPointY(view.bounds().y + 10);
+        float bob = (float) Math.sin(animationTime * 2.2f + view.region().ordinal()) * 1.4f * scale;
 
         for (int index = 0; index < buildingCount; index++) {
-            float x = baseX - index * 11;
-            float y = baseY + bob + index * 1.5f;
+            float x = baseX - index * 11 * scale;
+            float y = baseY + bob + index * 1.5f * scale;
+            BuildingType type = actualBuildings.isEmpty()
+                    ? BuildingType.FORT : actualBuildings.get(index % actualBuildings.size());
             shapes.setColor(BUILDING);
-            shapes.rect(x, y, 10, 8);
+            shapes.rect(x, y, 10 * scale, 8 * scale);
             shapes.setColor(BUILDING_DARK);
-            shapes.triangle(x - 1, y + 8, x + 5, y + 14, x + 11, y + 8);
-            boolean lightOn = Math.sin(animationTime * 3f + view.region().ordinal() + index) > -0.15f;
-            if (lightOn) {
-                shapes.setColor(ACCENT);
-            } else {
-                shapes.setColor(0.2f, 0.34f, 0.4f, 1f);
+            triangle(x - scale, y + 8 * scale, x + 5 * scale, y + 14 * scale, x + 11 * scale, y + 8 * scale);
+            shapes.setColor((Math.sin(animationTime * 3f + view.region().ordinal() + index) > -0.15f)
+                    ? ACCENT : new Color(0.2f, 0.34f, 0.4f, 1f));
+            shapes.rect(x + 2 * scale, y + 3 * scale, 2 * scale, 2 * scale);
+            shapes.rect(x + 6 * scale, y + 3 * scale, 2 * scale, 2 * scale);
+            if (view.region().nation() == PLAYER_NATION && !actualBuildings.isEmpty()) {
+                buildingHitBoxes.add(new BuildingHitBox(view.region(), type,
+                        new Rectangle(x - 4 * scale, y - 4 * scale, 18 * scale, 21 * scale)));
             }
-            shapes.rect(x + 2, y + 3, 2, 2);
-            shapes.rect(x + 6, y + 3, 2, 2);
         }
 
         float smoke = (animationTime * 7f + view.region().ordinal() * 1.7f) % 18f;
-        shapes.setColor(0.78f, 0.86f, 0.88f, 0.32f);
-        shapes.circle(baseX + 3 + smoke * .18f, baseY + 19 + smoke * .22f, 2.5f, 10);
-        shapes.circle(baseX + 8 + smoke * .16f, baseY + 23 + smoke * .16f, 2f, 10);
+        shapes.setColor(0.85f, 0.9f, 0.92f, 0.34f);
+        shapes.circle(baseX + 3 * scale + smoke * .18f * scale,
+                baseY + 19 * scale + smoke * .22f * scale, 2.5f * scale, 10);
+        shapes.circle(baseX + 8 * scale + smoke * .16f * scale,
+                baseY + 23 * scale + smoke * .16f * scale, 2f * scale, 10);
 
         if (view.region().railway()) {
             shapes.setColor(RAIL);
-            shapes.circle(view.bounds().x + 31, view.bounds().y + 8, 2.5f, 10);
+            shapes.circle(mapPointX(view.bounds().x + 31), mapPointY(view.bounds().y + 8), 2.5f * scale, 10);
         }
+    }
+
+    private void drawFrontMarkers() {
+        float progress = (animationTime * .6f) % 1f;
+        float x = centreX(WorldRegion.VALERIA_EASTMARCH)
+                + (centreX(WorldRegion.DRAVIK_VARKESH) - centreX(WorldRegion.VALERIA_EASTMARCH)) * progress;
+        float y = centreY(WorldRegion.VALERIA_EASTMARCH)
+                + (centreY(WorldRegion.DRAVIK_VARKESH) - centreY(WorldRegion.VALERIA_EASTMARCH)) * progress;
+        shapes.setColor(WARNING);
+        shapes.circle(x, y, 3.5f * mapZoom, 10);
     }
 
     private void drawFilledRegion(float[] vertices) {
@@ -242,16 +318,19 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     }
 
     private void drawMovingMarker(WorldRegion from, WorldRegion to, Color color, float offset) {
-        float progress = (animationTime * 0.16f + offset) % 1f;
+        float progress = (animationTime * .16f + offset) % 1f;
         float x = centreX(from) + (centreX(to) - centreX(from)) * progress;
         float y = centreY(from) + (centreY(to) - centreY(from)) * progress;
         shapes.setColor(color);
-        shapes.circle(x, y, 4, 12);
+        shapes.circle(x, y, 4 * mapZoom, 12);
     }
 
     private void drawButtons() {
         GameState state = simulation.state();
         EventDefinition event = state.currentEvent();
+        if (buildingPopupOpen) {
+            return;
+        }
 
         if (!state.finished() && event != null && !state.eventResolved()) {
             drawChoiceButton(new Rectangle(48, 310, 252, 92), event.choices().get(0), ACCENT,
@@ -260,24 +339,56 @@ public final class StrategyScreen extends InputAdapter implements Screen {
                     () -> execute(simulation.chooseEvent(1)));
         }
 
-        if (!state.finished()) {
-            drawButton(new Rectangle(1_074, 226, 160, 34), "Festung bauen", WARNING,
-                    () -> execute(buildSelected(BuildingType.FORT)));
-            drawButton(new Rectangle(1_244, 226, 154, 34), "Militärfabrik", WARNING,
-                    () -> execute(buildSelected(BuildingType.MILITARY)));
-            drawButton(new Rectangle(1_074, 184, 160, 34), "Infanterie", ACCENT,
-                    () -> execute(simulation.train(UnitType.INFANTRY)));
-            drawButton(new Rectangle(1_244, 184, 154, 34), "Stahl kaufen", MUTED,
-                    () -> execute(simulation.trade(TradeType.BUY_STEEL)));
-            drawButton(new Rectangle(1_074, 142, 160, 34), "Treibstoff", MUTED,
-                    () -> execute(simulation.trade(TradeType.BUY_FUEL)));
-            drawButton(new Rectangle(1_244, 142, 154, 34), "Aufklärung", MUTED,
-                    () -> execute(simulation.intelligenceAction()));
+        drawButton(new Rectangle(MAP_X + MAP_WIDTH - 86, 784, 66, 24), "RESET", MUTED, this::resetMapView);
 
+        if (!state.finished()) {
+            drawOperationsControls();
             String endDay = state.eventResolved() ? (state.day() == 10 ? "KRIEGSTEST" : "TAG BEENDEN")
                     : "ENTSCHEIDUNG NÖTIG";
             drawButton(new Rectangle(1_252, 836, 150, 32), endDay, ACCENT,
                     () -> execute(simulation.endDay()));
+        }
+    }
+
+    private void drawOperationsControls() {
+        OperationsTab[] tabs = OperationsTab.values();
+        for (int index = 0; index < tabs.length; index++) {
+            OperationsTab tab = tabs[index];
+            int row = index / 4;
+            int column = index % 4;
+            float x = 1_074 + column * 80;
+            float y = 304 - row * 30;
+            Color color = tab == operationsTab ? ACCENT : PANEL_ALT;
+            drawButton(new Rectangle(x, y, 74, 24), tab.label(), color, () -> operationsTab = tab);
+        }
+
+        switch (operationsTab) {
+            case BUILD -> {
+                drawButton(new Rectangle(1_074, 226, 156, 32), "Festung bauen", WARNING,
+                        () -> execute(buildSelected(BuildingType.FORT)));
+                drawButton(new Rectangle(1_242, 226, 156, 32), "Militärfabrik", WARNING,
+                        () -> execute(buildSelected(BuildingType.MILITARY)));
+            }
+            case MILITARY -> {
+                drawButton(new Rectangle(1_074, 226, 324, 32), "Infanterie ausbilden", ACCENT,
+                        () -> execute(simulation.train(UnitType.INFANTRY)));
+                drawButton(new Rectangle(1_074, 184, 324, 32), "Artillerie ausbilden", MUTED,
+                        () -> execute(simulation.train(UnitType.ARTILLERY)));
+            }
+            case TRADE -> {
+                drawButton(new Rectangle(1_074, 226, 156, 32), "Stahl kaufen", MUTED,
+                        () -> execute(simulation.trade(TradeType.BUY_STEEL)));
+                drawButton(new Rectangle(1_242, 226, 156, 32), "Treibstoff kaufen", MUTED,
+                        () -> execute(simulation.trade(TradeType.BUY_FUEL)));
+                drawButton(new Rectangle(1_074, 184, 324, 32), "Nahrung verkaufen", PANEL_ALT,
+                        () -> execute(simulation.trade(TradeType.SELL_FOOD)));
+            }
+            case INTELLIGENCE -> drawButton(new Rectangle(1_074, 226, 324, 32), "Aufklärung starten", ACCENT,
+                    () -> execute(simulation.intelligenceAction()));
+            case DIPLOMACY -> drawButton(new Rectangle(1_074, 226, 324, 32), "Beziehungsbericht", MUTED,
+                    () -> showNotice("Diplomatiebericht: Valeria hält die Nachbarstaaten unter Beobachtung."));
+            case LOGISTICS -> drawButton(new Rectangle(1_074, 226, 324, 32), "Versorgungsbericht", MUTED,
+                    () -> showNotice("Logistik: Eisenbahn aktiv. Frontversorgung über Eastmarch wird berechnet."));
         }
     }
 
@@ -302,7 +413,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private void drawButtonFrame(Rectangle rectangle, Color color, Runnable action) {
         buttons.add(new Button(rectangle, action));
         shapes.begin(ShapeType.Filled);
-        shapes.setColor(color.r, color.g, color.b, 0.16f);
+        shapes.setColor(color.r, color.g, color.b, .16f);
         shapes.rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
         shapes.end();
         shapes.begin(ShapeType.Line);
@@ -315,18 +426,16 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         GameState state = simulation.state();
         batch.setProjectionMatrix(viewport.getCamera().combined);
         batch.begin();
-
         drawHeader(state);
         drawMapLabels();
         drawSituationText();
         drawRegionDetails(state);
-
+        drawOperationsText(state);
         if (state.finished()) {
             drawReport(state);
         } else {
             drawEventText(state);
         }
-
         if (noticeTime > 0) {
             text(notice, 48, 112, 11, notice.startsWith("OK") ? ACCENT : WARNING);
         }
@@ -335,10 +444,11 @@ public final class StrategyScreen extends InputAdapter implements Screen {
 
     private void drawHeader(GameState state) {
         text("100 DAYS TO WAR", 48, 858, 20, ACCENT);
-        text("VEYRA // FLEXIBLE DEFENSE", 48, 840, 10, MUTED);
+        text("VEYRA // ATLAS DER HUNDERT TAGE", 48, 840, 10, MUTED);
         text("TAG " + String.format(Locale.ROOT, "%02d", state.day()) + " / 10", 300, 858, 18, TEXT);
         text("Stabilität " + percent(state.stability()) + "  ·  Moral " + percent(state.morale()), 300, 840, 10, MUTED);
-        text("WELTLAGE: " + worldStatus(state), 520, 858, 11, worldStatus(state).equals("kritisch") ? WARNING : ACCENT);
+        text("WELTLAGE: " + worldStatus(state), 520, 858, 11,
+                worldStatus(state).equals("kritisch") ? WARNING : ACCENT);
         text("Veyr River  ·  Eastmarch-Krise  ·  Eisenbahnnetz aktiv", 520, 840, 9, MUTED);
 
         for (int index = 0; index < 5; index++) {
@@ -350,33 +460,38 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     }
 
     private void drawMapLabels() {
-        text("VEYRA // STRATEGISCHE KARTE", 366, 792, 14, TEXT);
-        text("30 Regionen · sechs Staaten · Regionen anklicken", 366, 773, 10, MUTED);
+        text("VEYRA // INTERAKTIVER ATLAS", 366, 792, 14, TEXT);
+        text("30 Regionen · Zoom mit Scrollrad · Karte ziehen · Gebäude anklicken", 366, 773, 10, MUTED);
 
         for (MapRegionView view : mapRegions) {
             String number = String.format(Locale.ROOT, "%02d", view.region().ordinal() + 1);
             Color labelColor = view.region() == selectedRegion ? TEXT : MUTED;
-            text(number, view.labelX(), view.labelY(), view.region() == selectedRegion ? 10 : 8, labelColor);
+            text(number, mapPointX(view.labelX()), mapPointY(view.labelY()),
+                    view.region() == selectedRegion ? 10 : 8, labelColor);
         }
 
-        text("NORVANE", 584, 742, 9, nationColor(Nation.NORVANE));
-        text("ASTER", 390, 626, 9, nationColor(Nation.ASTER));
-        text("VALERIA", 590, 564, 9, nationColor(Nation.VALERIA));
-        text("DRAVIK", 824, 626, 9, nationColor(Nation.DRAVIK));
-        text("ELDORIA", 590, 366, 9, nationColor(Nation.ELDORIA));
-        text("KARSEN", 590, 282, 9, nationColor(Nation.KARSEN));
+        mapLabel("NORVANE", 584, 742, Nation.NORVANE);
+        mapLabel("ASTER", 390, 626, Nation.ASTER);
+        mapLabel("VALERIA", 590, 564, Nation.VALERIA);
+        mapLabel("DRAVIK", 824, 626, Nation.DRAVIK);
+        mapLabel("ELDORIA", 590, 366, Nation.ELDORIA);
+        mapLabel("KARSEN", 590, 282, Nation.KARSEN);
 
         text("Fluss", 382, 224, 9, RIVER);
         text("Eisenbahn", 430, 224, 9, RAIL);
         text("Front", 515, 224, 9, WARNING);
-        text("Nummer wählen → Details rechts", 620, 224, 9, MUTED);
+        text("Scrollen: Zoom  ·  Ziehen: Pan  ·  Gebäude: Upgrade", 620, 224, 9, MUTED);
+    }
+
+    private void mapLabel(String value, float x, float y, Nation nation) {
+        text(value, mapPointX(x), mapPointY(y), 9, nationColor(nation));
     }
 
     private void drawSituationText() {
         text("EASTMARCH-KRISE", 366, 190, 10, WARNING);
         text("Varkesh ↔ Eastmarch  ·  offene Ebene  ·  Panzerkorridor", 366, 171, 11, TEXT);
         text("Flussüberquerung: −20 % Angriff  ·  Eisenbahn verbessert Versorgung und Bewegung", 366, 151, 9, MUTED);
-        text("Gebäude pulsieren live: Fenster, Rauch, Bahnverkehr und Baustellen", 366, 112, 9, ACCENT);
+        text("Atlas-Modus aktiv: Gebäude pulsieren, Bahnmarker bewegen sich, Regionen bleiben anklickbar", 366, 112, 9, ACCENT);
     }
 
     private void drawEventText(GameState state) {
@@ -419,7 +534,8 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         } else {
             int y = 494;
             for (BuildingType building : buildings.stream().limit(3).toList()) {
-                text("• " + building.displayName(), 1_074, y, 10, TEXT);
+                int level = state.buildingLevel(selectedRegion.operationalRegion(), building);
+                text("• " + building.displayName() + "  L" + level, 1_074, y, 10, TEXT);
                 y -= 21;
             }
         }
@@ -429,11 +545,24 @@ public final class StrategyScreen extends InputAdapter implements Screen {
                     1_074, 415, 9, WARNING);
         }
 
-        text("OPERATIONSZENTRALE", 1_074, 316, 10, ACCENT);
+        text("OPERATIONSZENTRALE", 1_074, 350, 10, ACCENT);
         text(selectedRegion.nation() == PLAYER_NATION
-                ? "Bauaktionen wirken in der ausgewählten Region."
-                : "Nur Valeria kann in dieser Phase bauen.", 1_074, 294, 9,
+                ? "Tabs öffnen die einzelnen Einsatzbereiche."
+                : "Nur Valeria kann in dieser Phase bauen.", 1_074, 334, 9,
                 selectedRegion.nation() == PLAYER_NATION ? MUTED : WARNING);
+    }
+
+    private void drawOperationsText(GameState state) {
+        text(operationsTab.title(), 1_074, 266, 11, TEXT);
+        switch (operationsTab) {
+            case BUILD -> text("Bauort: " + selectedRegion.displayName(), 1_074, 246, 9, MUTED);
+            case MILITARY -> text("Ausbildung bindet Kapazität und Ressourcen.", 1_074, 246, 9, MUTED);
+            case TRADE -> text("Marktpreise: Stahl −9.000 · Treibstoff −6.000 Geld", 1_074, 246, 9, MUTED);
+            case INTELLIGENCE -> text("Operation kostet 6.500 Geld und erhöht die Datenqualität.", 1_074, 246, 9, MUTED);
+            case DIPLOMACY -> text("Beziehungen und Spannungen der sechs Staaten.", 1_074, 246, 9, MUTED);
+            case LOGISTICS -> text("Railway: " + (selectedRegion.railway() ? "Versorgung gesichert" : "keine Bahnverbindung"),
+                    1_074, 246, 9, MUTED);
+        }
     }
 
     private void detailRow(String label, String value, int y) {
@@ -457,6 +586,58 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         }
     }
 
+    private void drawBuildingPopup() {
+        if (selectedBuilding == null) {
+            buildingPopupOpen = false;
+            return;
+        }
+        GameState state = simulation.state();
+        BuildingType type = selectedBuilding.type();
+        RegionId region = selectedBuilding.region().operationalRegion();
+        int currentLevel = state.buildingLevel(region, type);
+        int targetLevel = Math.min(type.maxLevel(), currentLevel + 1);
+        Rectangle popup = new Rectangle(430, 205, 580, 470);
+
+        shapes.begin(ShapeType.Filled);
+        shapes.setColor(0f, 0f, 0f, .68f);
+        shapes.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        shapes.setColor(POPUP);
+        shapes.rect(popup.x, popup.y, popup.width, popup.height);
+        shapes.end();
+        shapes.begin(ShapeType.Line);
+        shapes.setColor(ACCENT);
+        shapes.rect(popup.x, popup.y, popup.width, popup.height);
+        shapes.end();
+
+        batch.begin();
+        text("GEBÄUDE-UPGRADE", popup.x + 28, popup.y + popup.height - 32, 11, ACCENT);
+        text(type.displayName() + " · " + selectedBuilding.region().displayName(),
+                popup.x + 28, popup.y + popup.height - 70, 21, TEXT);
+        text("Aktuelle Stufe: " + currentLevel + " / " + type.maxLevel(),
+                popup.x + 28, popup.y + popup.height - 108, 12, MUTED);
+        text("Nächste Stufe: " + type.effectAtLevel(targetLevel),
+                popup.x + 28, popup.y + popup.height - 140, 13, ACCENT);
+        text("Voraussetzung: " + type.upgradeRequirement(currentLevel),
+                popup.x + 28, popup.y + popup.height - 184, 11, TEXT);
+        if (currentLevel < type.maxLevel()) {
+            text("Kosten: " + format(type.upgradeCashCost(currentLevel)) + " Geld  ·  "
+                    + type.upgradeSteelCost(currentLevel) + " Stahl",
+                    popup.x + 28, popup.y + popup.height - 216, 11, WARNING);
+            text("Nach dem Ausbau wird der Produktionsbonus beim nächsten Tageswechsel genutzt.",
+                    popup.x + 28, popup.y + 120, 10, MUTED);
+        } else {
+            text("Dieses Gebäude arbeitet bereits auf der höchsten Stufe.",
+                    popup.x + 28, popup.y + 120, 11, ACCENT);
+        }
+        batch.end();
+
+        drawButton(new Rectangle(popup.x + 28, popup.y + 42, 244, 38),
+                currentLevel >= type.maxLevel() ? "MAXIMALE STUFE" : "UPGRADE AUSFÜHREN", ACCENT,
+                () -> execute(simulation.upgradeBuilding(type, region)));
+        drawButton(new Rectangle(popup.x + popup.width - 180, popup.y + 42, 152, 38),
+                "SCHLIESSEN", MUTED, () -> buildingPopupOpen = false);
+    }
+
     private ActionResult buildSelected(BuildingType type) {
         if (selectedRegion.nation() != PLAYER_NATION) {
             return ActionResult.rejected("Bauaufträge sind nur in Valeria möglich.");
@@ -465,7 +646,11 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     }
 
     private void execute(ActionResult result) {
-        notice = (result.success() ? "OK: " : "Hinweis: ") + result.message();
+        showNotice((result.success() ? "OK: " : "Hinweis: ") + result.message());
+    }
+
+    private void showNotice(String message) {
+        notice = message;
         noticeTime = 4;
     }
 
@@ -479,7 +664,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     }
 
     private void text(String value, float x, float y, float size, Color color) {
-        font.getData().setScale(size / 15f);
+        font.getData().setScale(size / FONT_BASE_SIZE);
         font.setColor(color);
         font.draw(batch, value, x, y);
     }
@@ -513,12 +698,59 @@ public final class StrategyScreen extends InputAdapter implements Screen {
 
     private float centreX(WorldRegion region) {
         return mapRegions.stream().filter(view -> view.region() == region).findFirst()
-                .map(MapRegionView::centerX).orElse(MAP_LEFT);
+                .map(view -> mapPointX(view.centerX())).orElse(MAP_LEFT);
     }
 
     private float centreY(WorldRegion region) {
         return mapRegions.stream().filter(view -> view.region() == region).findFirst()
-                .map(MapRegionView::centerY).orElse(MAP_BOTTOM);
+                .map(view -> mapPointY(view.centerY())).orElse(MAP_BOTTOM);
+    }
+
+    private float mapPointX(float x) {
+        return MAP_CENTER_X + (x - MAP_CENTER_X) * mapZoom + mapPanX;
+    }
+
+    private float mapPointY(float y) {
+        return MAP_CENTER_Y + (y - MAP_CENTER_Y) * mapZoom + mapPanY;
+    }
+
+    private float inverseMapX(float x) {
+        return MAP_CENTER_X + (x - MAP_CENTER_X - mapPanX) / mapZoom;
+    }
+
+    private float inverseMapY(float y) {
+        return MAP_CENTER_Y + (y - MAP_CENTER_Y - mapPanY) / mapZoom;
+    }
+
+    private float[] transformedVertices(MapRegionView view) {
+        float[] original = view.vertices();
+        float[] transformed = new float[original.length];
+        for (int index = 0; index < original.length; index += 2) {
+            transformed[index] = mapPointX(original[index]);
+            transformed[index + 1] = mapPointY(original[index + 1]);
+        }
+        return transformed;
+    }
+
+    private void lineBetween(WorldRegion from, WorldRegion to) {
+        shapes.line(centreX(from), centreY(from), centreX(to), centreY(to));
+    }
+
+    private void triangle(float x1, float y1, float x2, float y2, float x3, float y3) {
+        shapes.triangle(x1, y1, x2, y2, x3, y3);
+    }
+
+    private void beginMapClip() {
+        int screenX = Math.round(viewport.getScreenX() + MAP_AREA_X / WORLD_WIDTH * viewport.getScreenWidth());
+        int screenY = Math.round(viewport.getScreenY() + MAP_AREA_Y / WORLD_HEIGHT * viewport.getScreenHeight());
+        int screenWidth = Math.round(MAP_AREA_WIDTH / WORLD_WIDTH * viewport.getScreenWidth());
+        int screenHeight = Math.round(MAP_AREA_HEIGHT / WORLD_HEIGHT * viewport.getScreenHeight());
+        Gdx.gl.glEnable(GL20.GL_SCISSOR_TEST);
+        Gdx.gl.glScissor(screenX, screenY, screenWidth, screenHeight);
+    }
+
+    private void endMapClip() {
+        Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST);
     }
 
     private static List<MapRegionView> createMapRegions() {
@@ -562,17 +794,17 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     }
 
     private static void add(List<MapRegionView> regions, WorldRegion region, int column, int row) {
-        float x = MAP_LEFT + column * MAP_STEP_X;
-        float y = MAP_BOTTOM + row * MAP_STEP_Y;
+        float x = MAP_LEFT + column * MAP_STEP_X + (row % 2) * 2;
+        float y = MAP_BOTTOM + row * MAP_STEP_Y + (column % 2) * 2;
         float width = MAP_TILE_WIDTH;
         float height = MAP_TILE_HEIGHT;
         float[] vertices = {
-                x + 5, y + 7,
-                x + 25, y,
-                x + width - 6, y + 4,
-                x + width, y + height - 11,
+                x + 5, y + 8,
+                x + 23, y,
+                x + width - 7, y + 5,
+                x + width, y + height - 12,
                 x + width - 12, y + height,
-                x + 9, y + height - 3,
+                x + 10, y + height - 3,
                 x, y + height - 17
         };
         Rectangle bounds = new Rectangle(x, y, width, height);
@@ -581,17 +813,13 @@ public final class StrategyScreen extends InputAdapter implements Screen {
 
     private static Color nationColor(Nation nation) {
         return switch (nation) {
-            case NORVANE -> new Color(0.26f, 0.66f, 0.78f, 1f);
-            case ASTER -> new Color(0.68f, 0.48f, 0.82f, 1f);
-            case VALERIA -> new Color(0.22f, 0.55f, 0.78f, 1f);
-            case DRAVIK -> new Color(0.78f, 0.29f, 0.25f, 1f);
-            case ELDORIA -> new Color(0.29f, 0.64f, 0.43f, 1f);
-            case KARSEN -> new Color(0.78f, 0.58f, 0.28f, 1f);
+            case NORVANE -> new Color(0.42f, 0.69f, 0.84f, 1f);
+            case ASTER -> new Color(0.47f, 0.35f, 0.72f, 1f);
+            case VALERIA -> new Color(0.27f, 0.58f, 0.33f, 1f);
+            case DRAVIK -> new Color(0.72f, 0.27f, 0.23f, 1f);
+            case ELDORIA -> new Color(0.63f, 0.65f, 0.25f, 1f);
+            case KARSEN -> new Color(0.78f, 0.51f, 0.25f, 1f);
         };
-    }
-
-    private void lineBetween(WorldRegion from, WorldRegion to) {
-        shapes.line(centreX(from), centreY(from), centreX(to), centreY(to));
     }
 
     private static String shortResource(ResourceType type) {
@@ -626,9 +854,70 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         return "stabil";
     }
 
+    private boolean mapContains(float x, float y) {
+        return x >= MAP_AREA_X && x <= MAP_AREA_X + MAP_AREA_WIDTH
+                && y >= MAP_AREA_Y && y <= MAP_AREA_Y + MAP_AREA_HEIGHT;
+    }
+
+    private void resetMapView() {
+        mapZoom = 1f;
+        mapPanX = 0;
+        mapPanY = 0;
+        showNotice("OK: Kartenansicht zurückgesetzt.");
+    }
+
+    private void clampMapPan() {
+        float minPanX = MAP_AREA_X - MAP_CENTER_X - (MAP_CONTENT_RIGHT - MAP_CENTER_X) * mapZoom;
+        float maxPanX = MAP_AREA_X + MAP_AREA_WIDTH - MAP_CENTER_X
+                - (MAP_CONTENT_LEFT - MAP_CENTER_X) * mapZoom;
+        float minPanY = MAP_AREA_Y - MAP_CENTER_Y - (MAP_CONTENT_TOP - MAP_CENTER_Y) * mapZoom;
+        float maxPanY = MAP_AREA_Y + MAP_AREA_HEIGHT - MAP_CENTER_Y
+                - (MAP_CONTENT_BOTTOM - MAP_CENTER_Y) * mapZoom;
+        mapPanX = Math.max(minPanX, Math.min(maxPanX, mapPanX));
+        mapPanY = Math.max(minPanY, Math.min(maxPanY, mapPanY));
+    }
+
+    @Override
+    public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        Vector2 world = viewport.unproject(new Vector2(screenX, screenY));
+        if (buildingPopupOpen) {
+            return true;
+        }
+        if (mapContains(world.x, world.y)) {
+            panningMap = true;
+            mapDragMoved = false;
+            lastDragX = world.x;
+            lastDragY = world.y;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean touchDragged(int screenX, int screenY, int pointer) {
+        if (!panningMap || buildingPopupOpen) {
+            return true;
+        }
+        Vector2 world = viewport.unproject(new Vector2(screenX, screenY));
+        float deltaX = world.x - lastDragX;
+        float deltaY = world.y - lastDragY;
+        if (Math.abs(deltaX) + Math.abs(deltaY) > 1f) {
+            mapDragMoved = true;
+        }
+        mapPanX += deltaX;
+        mapPanY += deltaY;
+        lastDragX = world.x;
+        lastDragY = world.y;
+        clampMapPan();
+        return true;
+    }
+
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
         Vector2 world = viewport.unproject(new Vector2(screenX, screenY));
+        boolean dragged = mapDragMoved;
+        panningMap = false;
+        mapDragMoved = false;
+
         for (int index = buttons.size() - 1; index >= 0; index--) {
             Button candidate = buttons.get(index);
             if (candidate.bounds().contains(world.x, world.y)) {
@@ -636,16 +925,46 @@ public final class StrategyScreen extends InputAdapter implements Screen {
                 return true;
             }
         }
-        for (int index = mapRegions.size() - 1; index >= 0; index--) {
-            MapRegionView candidate = mapRegions.get(index);
+        if (buildingPopupOpen || dragged || !mapContains(world.x, world.y)) {
+            return true;
+        }
+
+        float rawX = inverseMapX(world.x);
+        float rawY = inverseMapY(world.y);
+        for (int index = buildingHitBoxes.size() - 1; index >= 0; index--) {
+            BuildingHitBox candidate = buildingHitBoxes.get(index);
             if (candidate.bounds().contains(world.x, world.y)) {
                 selectedRegion = candidate.region();
-                notice = "OK: " + selectedRegion.displayName() + " ausgewählt.";
-                noticeTime = 2.5f;
+                selectedBuilding = candidate;
+                buildingPopupOpen = true;
+                return true;
+            }
+        }
+        for (int index = mapRegions.size() - 1; index >= 0; index--) {
+            MapRegionView candidate = mapRegions.get(index);
+            if (candidate.bounds().contains(rawX, rawY)) {
+                selectedRegion = candidate.region();
+                showNotice("OK: " + selectedRegion.displayName() + " ausgewählt.");
                 return true;
             }
         }
         return true;
+    }
+
+    @Override
+    public boolean scrolled(float amountX, float amountY) {
+        Vector2 world = viewport.unproject(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
+        if (!mapContains(world.x, world.y)) {
+            return false;
+        }
+        float oldZoom = mapZoom;
+        float rawX = inverseMapX(world.x);
+        float rawY = inverseMapY(world.y);
+        mapZoom = Math.max(.72f, Math.min(2.35f, mapZoom - amountY * .12f));
+        mapPanX = world.x - MAP_CENTER_X - (rawX - MAP_CENTER_X) * mapZoom;
+        mapPanY = world.y - MAP_CENTER_Y - (rawY - MAP_CENTER_Y) * mapZoom;
+        clampMapPan();
+        return oldZoom != mapZoom;
     }
 
     @Override
@@ -670,9 +989,40 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         shapes.dispose();
         batch.dispose();
         font.dispose();
+        if (fontGenerator != null) {
+            fontGenerator.dispose();
+        }
+    }
+
+    private enum OperationsTab {
+        BUILD("BAU", "BAU & AUSBAU"),
+        MILITARY("ARMEE", "ARMEE & AUSBILDUNG"),
+        TRADE("HANDEL", "HANDEL & RESSOURCEN"),
+        INTELLIGENCE("INTEL", "AUFKLÄRUNG"),
+        DIPLOMACY("DIPLO", "DIPLOMATIE"),
+        LOGISTICS("LOGISTIK", "LOGISTIK & VERSORGUNG");
+
+        private final String label;
+        private final String title;
+
+        OperationsTab(String label, String title) {
+            this.label = label;
+            this.title = title;
+        }
+
+        private String label() {
+            return label;
+        }
+
+        private String title() {
+            return title;
+        }
     }
 
     private record Button(Rectangle bounds, Runnable action) {
+    }
+
+    private record BuildingHitBox(WorldRegion region, BuildingType type, Rectangle bounds) {
     }
 
     private record MapRegionView(WorldRegion region, Rectangle bounds, float[] vertices,

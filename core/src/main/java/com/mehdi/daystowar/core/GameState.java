@@ -10,6 +10,7 @@ import java.util.Random;
 public final class GameState {
     private final EnumMap<ResourceType, Integer> resources = new EnumMap<>(ResourceType.class);
     private final EnumMap<RegionId, List<BuildingType>> regionBuildings = new EnumMap<>(RegionId.class);
+    private final EnumMap<RegionId, EnumMap<BuildingType, Integer>> buildingLevels = new EnumMap<>(RegionId.class);
     private final List<ConstructionProject> construction = new ArrayList<>();
     private final List<ProductionOrder> production = new ArrayList<>();
     private final EnumMap<UnitType, Integer> army = new EnumMap<>(UnitType.class);
@@ -45,12 +46,16 @@ public final class GameState {
 
         for (RegionId region : RegionId.values()) {
             regionBuildings.put(region, new ArrayList<>());
+            buildingLevels.put(region, new EnumMap<>(BuildingType.class));
+            for (BuildingType type : BuildingType.values()) {
+                buildingLevels.get(region).put(type, 0);
+            }
         }
-        regionBuildings.get(RegionId.CAPITAL).add(BuildingType.BARRACKS);
-        regionBuildings.get(RegionId.INDUSTRY).add(BuildingType.CIVIL);
-        regionBuildings.get(RegionId.INDUSTRY).add(BuildingType.CIVIL);
-        regionBuildings.get(RegionId.INDUSTRY).add(BuildingType.STEELWORK);
-        regionBuildings.get(RegionId.RURAL).add(BuildingType.FARM);
+        addBuilding(RegionId.CAPITAL, BuildingType.BARRACKS);
+        addBuilding(RegionId.INDUSTRY, BuildingType.CIVIL);
+        addBuilding(RegionId.INDUSTRY, BuildingType.CIVIL);
+        addBuilding(RegionId.INDUSTRY, BuildingType.STEELWORK);
+        addBuilding(RegionId.RURAL, BuildingType.FARM);
 
         for (UnitType unit : UnitType.values()) {
             army.put(unit, 0);
@@ -97,6 +102,10 @@ public final class GameState {
 
     public List<BuildingType> buildings(RegionId region) {
         return List.copyOf(regionBuildings.get(region));
+    }
+
+    public int buildingLevel(RegionId region, BuildingType type) {
+        return buildingLevels.get(region).getOrDefault(type, 0);
     }
 
     public List<ConstructionProject> construction() {
@@ -174,6 +183,12 @@ public final class GameState {
     int countBuilding(BuildingType type) {
         return regionBuildings.values().stream()
                 .mapToInt(buildings -> (int) buildings.stream().filter(type::equals).count())
+                .sum();
+    }
+
+    int buildingPower(BuildingType type) {
+        return buildingLevels.values().stream()
+                .mapToInt(levels -> levels.getOrDefault(type, 0))
                 .sum();
     }
 
@@ -263,6 +278,14 @@ public final class GameState {
 
     void addBuilding(RegionId region, BuildingType type) {
         regionBuildings.get(region).add(type);
+        buildingLevels.get(region).compute(type, (key, value) -> value + 1);
+    }
+
+    void upgradeBuilding(RegionId region, BuildingType type) {
+        if (buildingLevel(region, type) <= 0 || buildingLevel(region, type) >= type.maxLevel()) {
+            return;
+        }
+        buildingLevels.get(region).compute(type, (key, value) -> value + 1);
     }
 
     void addConstruction(ConstructionProject project) {
