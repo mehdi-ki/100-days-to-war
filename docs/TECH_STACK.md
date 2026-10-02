@@ -6,7 +6,7 @@ Für **100 Days to War** wird **Java + libGDX + Gradle** eingesetzt. Das Desktop
 
 | Bereich | Entscheidung |
 | --- | --- |
-| Hauptsprache | Java 25 LTS |
+| Hauptsprache | Java 17 LTS |
 | Framework | libGDX 1.14.2 |
 | Desktop-Backend | libGDX LWJGL3 |
 | Build-System | Gradle 9.8.0 |
@@ -24,7 +24,8 @@ Java ist für dieses Projekt langfristig passend, weil:
 - Gameplay, Simulation, Daten und Rendering sauber getrennt werden können,
 - libGDX ein ausgereiftes 2D-Framework mit Linux-Desktop-Unterstützung bietet,
 - Gradle reproduzierbare Builds und CI-Builds ermöglicht,
-- Java 25 zusammen mit der AppImage-Laufzeit ausgeliefert werden kann.
+- Java 17 als stabile LTS-Basis breit kompatibel ist und zusammen mit der
+  AppImage-Laufzeit ausgeliefert werden kann.
 
 Eine Python-Migration würde keinen Vorteil bringen: Der vorhandene Prototyp ist nicht in Python aufgebaut, und ein paralleler Java/Python-Kern würde die Architektur unnötig verkomplizieren.
 
@@ -48,7 +49,13 @@ Der `core`-Teil kennt kein Rendering. Er kann deshalb in Tests und später auch 
 
 ## Build und Laufzeit
 
-Die Java-Version ist zentral im Root-Build festgelegt. Der CI-Build verwendet ein JDK 25. Nutzer des fertigen Releases benötigen kein separat installiertes Java: Das AppImage wird mit `jpackage` als App-Image mit eigener Runtime vorbereitet und anschließend als `100-Days-to-War-v0.2.0-x86_64.AppImage` verpackt.
+Die Java-Version ist zentral im Root-Build festgelegt. Der CI-Build verwendet
+JDK 17 und kompiliert ausdrücklich auf Java-17-Bytecode. Nutzer des fertigen
+Releases benötigen kein separat installiertes Java: Das AppImage wird mit
+`jpackage` als App-Image mit eigener Java-17-Runtime vorbereitet und
+anschließend als `100-Days-to-War-v0.2.0-x86_64.AppImage` verpackt. Dadurch
+starten auch lokale Entwickler-Launcher mit einer vorhandenen Java-17-
+Installation ohne `UnsupportedClassVersionError`.
 
 Lokal für Entwickler:
 
@@ -69,7 +76,7 @@ Release:
 - `com.badlogicgames.gdx:gdx-platform:1.14.2:natives-desktop`
 - JUnit Jupiter 5.12.2 für Simulationstests
 - Gradle 9.8.0 für Build und Packaging
-- `jpackage` aus dem JDK und `appimagetool` für das Linux-AppImage
+- `jpackage` aus JDK 17 und `appimagetool` für das Linux-AppImage
 
 ## Portierungsumfang des Prototyps
 

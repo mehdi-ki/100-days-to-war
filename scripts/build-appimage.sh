@@ -21,9 +21,31 @@ rm -rf "${STAGING}"
 mkdir -p "${STAGING}/jpackage" "${APP_DIR}/usr/lib" \
   "${APP_DIR}/usr/share/icons/hicolor/scalable/apps" "${PROJECT_ROOT}/release"
 
-# jpackage creates an application image with its own Java runtime. The complete
-# image is kept inside the AppImage so users do not need to install Java.
-jpackage \
+# jpackage creates an application image with its own Java runtime. Use the
+# runtime from JAVA_HOME explicitly so the packaged runtime always matches the
+# bytecode target (Java 17) and never silently falls back to another JDK.
+JPACKAGE="${JPACKAGE:-}"
+if [[ -z "${JPACKAGE}" && -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/jpackage" ]]; then
+  JPACKAGE="${JAVA_HOME}/bin/jpackage"
+fi
+if [[ -z "${JPACKAGE}" ]]; then
+  JPACKAGE="$(command -v jpackage || true)"
+fi
+if [[ -z "${JPACKAGE}" || ! -x "${JPACKAGE}" ]]; then
+  echo "jpackage wurde nicht gefunden. Ein JDK 17 ist erforderlich." >&2
+  exit 1
+fi
+
+JPACKAGE_VERSION="$("${JPACKAGE}" --version)"
+case "${JPACKAGE_VERSION}" in
+  17.*) ;;
+  *)
+    echo "Falsche jpackage-Version: ${JPACKAGE_VERSION}. Erwartet wird JDK 17." >&2
+    exit 1
+    ;;
+esac
+
+"${JPACKAGE}" \
   --type app-image \
   --name "${APP_NAME}" \
   --app-version "${VERSION#v}" \
@@ -31,6 +53,12 @@ jpackage \
   --main-jar "100-days-to-war.jar" \
   --main-class "com.mehdi.daystowar.desktop.DesktopLauncher" \
   --dest "${STAGING}/jpackage"
+
+RUNTIME_RELEASE="${STAGING}/jpackage/${APP_NAME}/lib/runtime/release"
+if [[ ! -f "${RUNTIME_RELEASE}" ]] || ! grep -q 'JAVA_VERSION="17\.' "${RUNTIME_RELEASE}"; then
+  echo "Die gebündelte Java-17-Laufzeit wurde nicht korrekt erzeugt." >&2
+  exit 1
+fi
 
 cp -R "${STAGING}/jpackage/${APP_NAME}" "${APP_DIR}/usr/lib/"
 cp "${PROJECT_ROOT}/assets/100-days-to-war.svg" "${APP_DIR}/usr/share/icons/hicolor/scalable/apps/${APP_NAME}.svg"
