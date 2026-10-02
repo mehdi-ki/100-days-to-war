@@ -123,7 +123,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         for (MapRegionView view : mapRegions) {
             Color country = nationColor(view.region().nation());
             shapes.setColor(country.r, country.g, country.b, 0.9f);
-            shapes.polygon(view.vertices());
+            drawFilledRegion(view.vertices());
             drawTerrainDecoration(view);
             drawAnimatedBuildings(view);
         }
@@ -217,6 +217,13 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         if (view.region().railway()) {
             shapes.setColor(RAIL);
             shapes.circle(view.bounds().x + 31, view.bounds().y + 8, 2.5f, 10);
+        }
+    }
+
+    private void drawFilledRegion(float[] vertices) {
+        for (int index = 2; index < vertices.length - 2; index += 2) {
+            shapes.triangle(vertices[0], vertices[1], vertices[index], vertices[index + 1],
+                    vertices[index + 2], vertices[index + 3]);
         }
     }
 
