@@ -13,7 +13,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.StretchViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 import java.util.ArrayList;
@@ -68,7 +68,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private static final Color POPUP = new Color(0.055f, 0.075f, 0.1f, 1f);
 
     private final WorldSimulation simulation;
-    private final Viewport viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT);
+    private final Viewport viewport = new StretchViewport(WORLD_WIDTH, WORLD_HEIGHT);
     private final ShapeRenderer shapes = new ShapeRenderer();
     private final SpriteBatch batch = new SpriteBatch();
     private final List<Button> buttons = new ArrayList<>();
@@ -173,6 +173,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
             shapes.setColor(country.r, country.g, country.b, 0.93f);
             drawFilledRegion(transformedVertices(view));
             drawTerrainDecoration(view);
+            drawStrategicLandmarks(view);
             drawAnimatedBuildings(view);
         }
         shapes.end();
@@ -241,6 +242,37 @@ public final class StrategyScreen extends InputAdapter implements Screen {
             case PLAINS -> {
                 shapes.setColor(0.84f, 0.86f, 0.48f, 0.8f);
                 shapes.rect(x + 2 * scale, y + 4 * scale, 22 * scale, 2 * scale);
+            }
+        }
+    }
+
+    private void drawStrategicLandmarks(MapRegionView view) {
+        float scale = mapZoom;
+        float x = mapPointX(view.bounds().x + view.bounds().width * .52f);
+        float y = mapPointY(view.bounds().y + view.bounds().height * .48f);
+        String resources = view.region().resources();
+
+        if (view.region().operationalRegion() == RegionId.CAPITAL) {
+            shapes.setColor(0.98f, 0.88f, 0.48f, .98f);
+            shapes.circle(x, y, 4.2f * scale, 8);
+            shapes.setColor(0.24f, 0.16f, 0.12f, .9f);
+            shapes.rect(x - 1.2f * scale, y - 8 * scale, 2.4f * scale, 16 * scale);
+            shapes.rect(x - 8 * scale, y - 1.2f * scale, 16 * scale, 2.4f * scale);
+        } else if (resources.contains("Öl") || resources.contains("Energie")) {
+            shapes.setColor(0.17f, 0.15f, 0.13f, .95f);
+            shapes.rect(x - 1.4f * scale, y - 10 * scale, 2.8f * scale, 20 * scale);
+            shapes.rect(x - 7 * scale, y - 7 * scale, 14 * scale, 1.8f * scale);
+            shapes.rect(x - 5 * scale, y + 4 * scale, 10 * scale, 1.8f * scale);
+        } else if (resources.contains("Stahl") || resources.contains("Industrie")) {
+            shapes.setColor(0.23f, 0.24f, 0.24f, .95f);
+            shapes.rect(x - 8 * scale, y - 5 * scale, 4 * scale, 11 * scale);
+            shapes.rect(x - 2 * scale, y - 8 * scale, 4 * scale, 14 * scale);
+            shapes.rect(x + 4 * scale, y - 3 * scale, 4 * scale, 9 * scale);
+        } else if (resources.contains("Nahrung") || resources.contains("Getreide")
+                || resources.contains("Landwirtschaft")) {
+            shapes.setColor(0.92f, 0.79f, 0.26f, .9f);
+            for (int stripe = -2; stripe <= 2; stripe++) {
+                shapes.rect(x + stripe * 4 * scale, y - 7 * scale, 1.5f * scale, 14 * scale);
             }
         }
     }
@@ -357,37 +389,37 @@ public final class StrategyScreen extends InputAdapter implements Screen {
             int row = index / 4;
             int column = index % 4;
             float x = 1_074 + column * 80;
-            float y = 304 - row * 30;
+            float y = 296 - row * 30;
             Color color = tab == operationsTab ? ACCENT : PANEL_ALT;
             drawButton(new Rectangle(x, y, 74, 24), tab.label(), color, () -> operationsTab = tab);
         }
 
         switch (operationsTab) {
             case BUILD -> {
-                drawButton(new Rectangle(1_074, 226, 156, 32), "Festung bauen", WARNING,
+                drawButton(new Rectangle(1_074, 174, 156, 32), "Festung bauen", WARNING,
                         () -> execute(buildSelected(BuildingType.FORT)));
-                drawButton(new Rectangle(1_242, 226, 156, 32), "Militärfabrik", WARNING,
+                drawButton(new Rectangle(1_242, 174, 156, 32), "Militärfabrik", WARNING,
                         () -> execute(buildSelected(BuildingType.MILITARY)));
             }
             case MILITARY -> {
-                drawButton(new Rectangle(1_074, 226, 324, 32), "Infanterie ausbilden", ACCENT,
+                drawButton(new Rectangle(1_074, 174, 324, 32), "Infanterie ausbilden", ACCENT,
                         () -> execute(simulation.train(UnitType.INFANTRY)));
-                drawButton(new Rectangle(1_074, 184, 324, 32), "Artillerie ausbilden", MUTED,
+                drawButton(new Rectangle(1_074, 132, 324, 32), "Artillerie ausbilden", MUTED,
                         () -> execute(simulation.train(UnitType.ARTILLERY)));
             }
             case TRADE -> {
-                drawButton(new Rectangle(1_074, 226, 156, 32), "Stahl kaufen", MUTED,
+                drawButton(new Rectangle(1_074, 174, 156, 32), "Stahl kaufen", MUTED,
                         () -> execute(simulation.trade(TradeType.BUY_STEEL)));
-                drawButton(new Rectangle(1_242, 226, 156, 32), "Treibstoff kaufen", MUTED,
+                drawButton(new Rectangle(1_242, 174, 156, 32), "Treibstoff kaufen", MUTED,
                         () -> execute(simulation.trade(TradeType.BUY_FUEL)));
-                drawButton(new Rectangle(1_074, 184, 324, 32), "Nahrung verkaufen", PANEL_ALT,
+                drawButton(new Rectangle(1_074, 132, 324, 32), "Nahrung verkaufen", PANEL_ALT,
                         () -> execute(simulation.trade(TradeType.SELL_FOOD)));
             }
-            case INTELLIGENCE -> drawButton(new Rectangle(1_074, 226, 324, 32), "Aufklärung starten", ACCENT,
+            case INTELLIGENCE -> drawButton(new Rectangle(1_074, 174, 324, 32), "Aufklärung starten", ACCENT,
                     () -> execute(simulation.intelligenceAction()));
-            case DIPLOMACY -> drawButton(new Rectangle(1_074, 226, 324, 32), "Beziehungsbericht", MUTED,
+            case DIPLOMACY -> drawButton(new Rectangle(1_074, 174, 324, 32), "Beziehungsbericht", MUTED,
                     () -> showNotice("Diplomatiebericht: Valeria hält die Nachbarstaaten unter Beobachtung."));
-            case LOGISTICS -> drawButton(new Rectangle(1_074, 226, 324, 32), "Versorgungsbericht", MUTED,
+            case LOGISTICS -> drawButton(new Rectangle(1_074, 174, 324, 32), "Versorgungsbericht", MUTED,
                     () -> showNotice("Logistik: Eisenbahn aktiv. Frontversorgung über Eastmarch wird berechnet."));
         }
     }
@@ -437,7 +469,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
             drawEventText(state);
         }
         if (noticeTime > 0) {
-            text(notice, 48, 112, 11, notice.startsWith("OK") ? ACCENT : WARNING);
+            drawWrapped(notice, 48, 112, 36, 13, 11, notice.startsWith("OK") ? ACCENT : WARNING);
         }
         batch.end();
     }
@@ -449,7 +481,8 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         text("Stabilität " + percent(state.stability()) + "  ·  Moral " + percent(state.morale()), 300, 840, 10, MUTED);
         text("WELTLAGE: " + worldStatus(state), 520, 858, 11,
                 worldStatus(state).equals("kritisch") ? WARNING : ACCENT);
-        text("Veyr River  ·  Eastmarch-Krise  ·  Eisenbahnnetz aktiv", 520, 840, 9, MUTED);
+        drawWrapped("Veyr River  ·  Eastmarch-Krise  ·  Eisenbahnnetz aktiv",
+                520, 840, 31, 10, 8, MUTED);
 
         for (int index = 0; index < 5; index++) {
             ResourceType type = ResourceType.values()[index];
@@ -517,8 +550,8 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private void drawRegionDetails(GameState state) {
         text("REGION", 1_074, 792, 10, ACCENT);
         text(selectedRegion.displayName(), 1_074, 758, 18, TEXT);
-        text(selectedRegion.nation().displayName() + "  ·  " + selectedRegion.terrain().displayName(),
-                1_074, 737, 10, nationColor(selectedRegion.nation()));
+        drawWrapped(selectedRegion.nation().displayName() + "  ·  " + selectedRegion.terrain().displayName(),
+                1_074, 737, 34, 12, 10, nationColor(selectedRegion.nation()));
 
         detailRow("Bevölkerung", formatMillions(selectedRegion.population()), 698);
         detailRow("Infrastruktur", selectedRegion.infrastructure() + " / 100", 672);
@@ -546,22 +579,28 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         }
 
         text("OPERATIONSZENTRALE", 1_074, 350, 10, ACCENT);
-        text(selectedRegion.nation() == PLAYER_NATION
-                ? "Tabs öffnen die einzelnen Einsatzbereiche."
-                : "Nur Valeria kann in dieser Phase bauen.", 1_074, 334, 9,
+        drawWrapped(selectedRegion.nation() == PLAYER_NATION
+                        ? "Tabs öffnen die einzelnen Einsatzbereiche."
+                        : "Nur Valeria kann in dieser Phase bauen.",
+                1_074, 334, 34, 11, 9,
                 selectedRegion.nation() == PLAYER_NATION ? MUTED : WARNING);
     }
 
     private void drawOperationsText(GameState state) {
-        text(operationsTab.title(), 1_074, 266, 11, TEXT);
+        text(operationsTab.title(), 1_074, 236, 11, TEXT);
         switch (operationsTab) {
-            case BUILD -> text("Bauort: " + selectedRegion.displayName(), 1_074, 246, 9, MUTED);
-            case MILITARY -> text("Ausbildung bindet Kapazität und Ressourcen.", 1_074, 246, 9, MUTED);
-            case TRADE -> text("Marktpreise: Stahl −9.000 · Treibstoff −6.000 Geld", 1_074, 246, 9, MUTED);
-            case INTELLIGENCE -> text("Operation kostet 6.500 Geld und erhöht die Datenqualität.", 1_074, 246, 9, MUTED);
-            case DIPLOMACY -> text("Beziehungen und Spannungen der sechs Staaten.", 1_074, 246, 9, MUTED);
-            case LOGISTICS -> text("Railway: " + (selectedRegion.railway() ? "Versorgung gesichert" : "keine Bahnverbindung"),
-                    1_074, 246, 9, MUTED);
+            case BUILD -> text("Bauort: " + selectedRegion.displayName(), 1_074, 218, 9, MUTED);
+            case MILITARY -> drawWrapped("Ausbildung bindet Kapazität und Ressourcen.",
+                    1_074, 218, 34, 11, 9, MUTED);
+            case TRADE -> drawWrapped("Marktpreise: Stahl −9.000 · Treibstoff −6.000 Geld",
+                    1_074, 218, 34, 11, 9, MUTED);
+            case INTELLIGENCE -> drawWrapped("Operation kostet 6.500 Geld und erhöht die Datenqualität.",
+                    1_074, 218, 34, 11, 9, MUTED);
+            case DIPLOMACY -> drawWrapped("Beziehungen und Spannungen der sechs Staaten.",
+                    1_074, 218, 34, 11, 9, MUTED);
+            case LOGISTICS -> drawWrapped("Railway: "
+                            + (selectedRegion.railway() ? "Versorgung gesichert" : "keine Bahnverbindung"),
+                    1_074, 218, 34, 11, 9, MUTED);
         }
     }
 
