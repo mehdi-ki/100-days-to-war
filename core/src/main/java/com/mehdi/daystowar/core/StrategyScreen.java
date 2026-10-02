@@ -7,6 +7,7 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -66,6 +67,9 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private static final Color BUILDING = new Color(0.94f, 0.78f, 0.45f, 1f);
     private static final Color BUILDING_DARK = new Color(0.36f, 0.22f, 0.16f, 1f);
     private static final Color POPUP = new Color(0.055f, 0.075f, 0.1f, 1f);
+    private static final Color ACCENT_SURFACE = new Color(0.13f, 0.28f, 0.17f, 1f);
+    private static final Color WARNING_SURFACE = new Color(0.30f, 0.20f, 0.10f, 1f);
+    private static final Color MUTED_SURFACE = new Color(0.10f, 0.15f, 0.19f, 1f);
 
     private final WorldSimulation simulation;
     private final Viewport viewport = new StretchViewport(WORLD_WIDTH, WORLD_HEIGHT);
@@ -76,6 +80,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private final List<MapRegionView> mapRegions = createMapRegions();
     private final FreeTypeFontGenerator fontGenerator;
     private final BitmapFont font;
+    private final GlyphLayout glyphLayout = new GlyphLayout();
 
     private WorldRegion selectedRegion = WorldRegion.VALERIA_CAPITAL;
     private OperationsTab operationsTab = OperationsTab.BUILD;
@@ -429,9 +434,9 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         drawButtonFrame(rectangle, color, action);
         batch.begin();
         drawWrapped(choice.label(), rectangle.x + 12, rectangle.y + rectangle.height - 24,
-                30, 14, 12, TEXT);
+                rectangle.width - 24, 14, 12, TEXT);
         drawWrapped(choice.consequence(), rectangle.x + 12, rectangle.y + 39,
-                33, 13, 10, MUTED);
+                rectangle.width - 24, 13, 10, MUTED);
         batch.end();
     }
 
@@ -445,13 +450,27 @@ public final class StrategyScreen extends InputAdapter implements Screen {
     private void drawButtonFrame(Rectangle rectangle, Color color, Runnable action) {
         buttons.add(new Button(rectangle, action));
         shapes.begin(ShapeType.Filled);
-        shapes.setColor(color.r, color.g, color.b, .16f);
+        Color surface = buttonSurface(color);
+        shapes.setColor(surface);
         shapes.rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
         shapes.end();
         shapes.begin(ShapeType.Line);
         shapes.setColor(color);
         shapes.rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
         shapes.end();
+    }
+
+    private Color buttonSurface(Color borderColor) {
+        if (borderColor == ACCENT) {
+            return ACCENT_SURFACE;
+        }
+        if (borderColor == WARNING) {
+            return WARNING_SURFACE;
+        }
+        if (borderColor == MUTED) {
+            return MUTED_SURFACE;
+        }
+        return PANEL_ALT;
     }
 
     private void drawText() {
@@ -469,7 +488,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
             drawEventText(state);
         }
         if (noticeTime > 0) {
-            drawWrapped(notice, 48, 112, 36, 13, 11, notice.startsWith("OK") ? ACCENT : WARNING);
+            drawWrapped(notice, 48, 112, 244, 13, 11, notice.startsWith("OK") ? ACCENT : WARNING);
         }
         batch.end();
     }
@@ -482,7 +501,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         text("WELTLAGE: " + worldStatus(state), 520, 858, 11,
                 worldStatus(state).equals("kritisch") ? WARNING : ACCENT);
         drawWrapped("Veyr River  ·  Eastmarch-Krise  ·  Eisenbahnnetz aktiv",
-                520, 840, 31, 10, 8, MUTED);
+                520, 840, 490, 10, 8, MUTED);
 
         for (int index = 0; index < 5; index++) {
             ResourceType type = ResourceType.values()[index];
@@ -496,6 +515,10 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         text("VEYRA // INTERAKTIVER ATLAS", 366, 792, 14, TEXT);
         text("30 Regionen · Zoom mit Scrollrad · Karte ziehen · Gebäude anklicken", 366, 773, 10, MUTED);
 
+        // Region labels belong to the map viewport. Without this clip they
+        // are drawn above the fixed side panels when the map is panned.
+        batch.flush();
+        beginMapClip();
         for (MapRegionView view : mapRegions) {
             String number = String.format(Locale.ROOT, "%02d", view.region().ordinal() + 1);
             Color labelColor = view.region() == selectedRegion ? TEXT : MUTED;
@@ -509,6 +532,8 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         mapLabel("DRAVIK", 824, 626, Nation.DRAVIK);
         mapLabel("ELDORIA", 590, 366, Nation.ELDORIA);
         mapLabel("KARSEN", 590, 282, Nation.KARSEN);
+        batch.flush();
+        endMapClip();
 
         text("Fluss", 382, 224, 9, RIVER);
         text("Eisenbahn", 430, 224, 9, RAIL);
@@ -533,8 +558,8 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         if (event == null) {
             text("Keine neue Meldung", 48, 750, 16, TEXT);
         } else {
-            drawWrapped(event.title(), 48, 752, 31, 20, 16, TEXT);
-            drawWrapped(event.description(), 48, 700, 35, 16, 11, MUTED);
+            drawWrapped(event.title(), 48, 752, 244, 20, 16, TEXT);
+            drawWrapped(event.description(), 48, 700, 244, 16, 11, MUTED);
             text(state.eventResolved() ? "Entscheidung gespeichert" : "ENTSCHEIDUNG AUSWÄHLEN",
                     48, 442, 10, state.eventResolved() ? ACCENT : WARNING);
         }
@@ -542,7 +567,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         text("LETZTE MELDUNGEN", 48, 166, 10, ACCENT);
         int y = 144;
         for (String entry : state.history().stream().limit(3).toList()) {
-            drawWrapped(entry, 48, y, 34, 13, 9, MUTED);
+            drawWrapped(entry, 48, y, 244, 13, 9, MUTED);
             y -= 30;
         }
     }
@@ -551,7 +576,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         text("REGION", 1_074, 792, 10, ACCENT);
         text(selectedRegion.displayName(), 1_074, 758, 18, TEXT);
         drawWrapped(selectedRegion.nation().displayName() + "  ·  " + selectedRegion.terrain().displayName(),
-                1_074, 737, 34, 12, 10, nationColor(selectedRegion.nation()));
+                1_074, 737, 310, 12, 10, nationColor(selectedRegion.nation()));
 
         detailRow("Bevölkerung", formatMillions(selectedRegion.population()), 698);
         detailRow("Infrastruktur", selectedRegion.infrastructure() + " / 100", 672);
@@ -582,7 +607,7 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         drawWrapped(selectedRegion.nation() == PLAYER_NATION
                         ? "Tabs öffnen die einzelnen Einsatzbereiche."
                         : "Nur Valeria kann in dieser Phase bauen.",
-                1_074, 334, 34, 11, 9,
+                1_074, 334, 310, 11, 9,
                 selectedRegion.nation() == PLAYER_NATION ? MUTED : WARNING);
     }
 
@@ -591,22 +616,22 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         switch (operationsTab) {
             case BUILD -> text("Bauort: " + selectedRegion.displayName(), 1_074, 218, 9, MUTED);
             case MILITARY -> drawWrapped("Ausbildung bindet Kapazität und Ressourcen.",
-                    1_074, 218, 34, 11, 9, MUTED);
+                    1_074, 218, 310, 11, 9, MUTED);
             case TRADE -> drawWrapped("Marktpreise: Stahl −9.000 · Treibstoff −6.000 Geld",
-                    1_074, 218, 34, 11, 9, MUTED);
+                    1_074, 218, 310, 11, 9, MUTED);
             case INTELLIGENCE -> drawWrapped("Operation kostet 6.500 Geld und erhöht die Datenqualität.",
-                    1_074, 218, 34, 11, 9, MUTED);
+                    1_074, 218, 310, 11, 9, MUTED);
             case DIPLOMACY -> drawWrapped("Beziehungen und Spannungen der sechs Staaten.",
-                    1_074, 218, 34, 11, 9, MUTED);
+                    1_074, 218, 310, 11, 9, MUTED);
             case LOGISTICS -> drawWrapped("Railway: "
                             + (selectedRegion.railway() ? "Versorgung gesichert" : "keine Bahnverbindung"),
-                    1_074, 218, 34, 11, 9, MUTED);
+                    1_074, 218, 310, 11, 9, MUTED);
         }
     }
 
     private void detailRow(String label, String value, int y) {
         text(label, 1_074, y, 9, MUTED);
-        drawWrapped(value, 1_188, y, 18, 12, 9, TEXT);
+        drawWrapped(value, 1_188, y, 200, 12, 9, TEXT);
     }
 
     private void drawReport(GameState state) {
@@ -708,19 +733,21 @@ public final class StrategyScreen extends InputAdapter implements Screen {
         font.draw(batch, value, x, y);
     }
 
-    private void drawWrapped(String value, float x, float y, int maxCharacters, float lineHeight,
+    private void drawWrapped(String value, float x, float y, float maxWidth, float lineHeight,
                              float size, Color color) {
-        for (String line : wrap(value, maxCharacters)) {
+        font.getData().setScale(size / FONT_BASE_SIZE);
+        for (String line : wrap(value, maxWidth)) {
             text(line, x, y, size, color);
             y -= lineHeight;
         }
     }
 
-    private static List<String> wrap(String value, int maxCharacters) {
+    private List<String> wrap(String value, float maxWidth) {
         List<String> lines = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         for (String word : value.split("\\s+")) {
-            if (current.length() + word.length() + 1 > maxCharacters && !current.isEmpty()) {
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (textWidth(candidate) > maxWidth && !current.isEmpty()) {
                 lines.add(current.toString());
                 current.setLength(0);
             }
@@ -733,6 +760,11 @@ public final class StrategyScreen extends InputAdapter implements Screen {
             lines.add(current.toString());
         }
         return lines;
+    }
+
+    private float textWidth(String value) {
+        glyphLayout.setText(font, value);
+        return glyphLayout.width;
     }
 
     private float centreX(WorldRegion region) {
